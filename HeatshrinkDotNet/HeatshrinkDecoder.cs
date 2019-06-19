@@ -93,7 +93,8 @@ namespace HeatshrinkDotNet
             _lookaheadSz2 = lookaheadBits;
             Reset();
 
-            Logging.WriteLine($"-- allocated decoder with buffer size of {bufferSz} ({1 << windowBits} + {_inputBufferSize})");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- allocated decoder with buffer size of {bufferSz} ({1 << windowBits} + {_inputBufferSize})");
         }
 
         /// <summary>
@@ -150,7 +151,8 @@ namespace HeatshrinkDotNet
             if (rem == 0) return DecoderSinkResult.Full;
 
             size = rem < size ? rem : size;
-            Logging.WriteLine($"-- sinking {size} bytes");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- sinking {size} bytes");
             Array.Copy(buffer, offset, _buffer, _inputSize, size);
             _inputSize += size;
             inputSize = size;
@@ -194,7 +196,8 @@ namespace HeatshrinkDotNet
 
             while (true)
             {
-                Logging.WriteLine($"-- poll, state is {Convert.ToInt32(_state)} ({StateNames[_state]}), input_size {_inputSize}");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"-- poll, state is {Convert.ToInt32(_state)} ({StateNames[_state]}), input_size {_inputSize}");
 
                 var state = _state;
                 switch (state)
@@ -278,7 +281,8 @@ namespace HeatshrinkDotNet
             var accumulator = 0;
 
             if (count > 15) return -1;
-            Logging.WriteLine($"-- popping {count} bit(s)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- popping {count} bit(s)");
 
             /* If we aren't able to get COUNT bits, suspend immediately, because we
              * don't track how many bits of COUNT we've accumulated before suspend. */
@@ -292,12 +296,14 @@ namespace HeatshrinkDotNet
                 {
                     if (_inputSize == 0)
                     {
-                        Logging.WriteLine($"  -- out of bits, suspending w/ accumulator of {accumulator} (0x{accumulator:x2})");
+                        if (Constants.EnableLogging)
+                            Console.WriteLine($"  -- out of bits, suspending w/ accumulator of {accumulator} (0x{accumulator:x2})");
                         return -1;
                     }
 
                     _currentByte = _buffer[_inputIndex++];
-                    Logging.WriteLine($"  -- pulled byte 0x{_currentByte:x2}");
+                    if (Constants.EnableLogging)
+                        Console.WriteLine($"  -- pulled byte 0x{_currentByte:x2}");
                     if (_inputIndex == _inputSize)
                     {
                         _inputIndex = 0; // input is exhausted
@@ -312,16 +318,20 @@ namespace HeatshrinkDotNet
                 _bitIndex >>= 1;
             }
 
-            if (count > 1) Logging.WriteLine($"  -- accumulated {accumulator:x8}");
+            if (count > 1 && Constants.EnableLogging) Console.WriteLine($"  -- accumulated {accumulator:x8}");
             return accumulator;
         }
 
         void PushByte(byte[] buffer, int offset, int size, ref int outputSize, byte _byte)
         {
-            var _c = Convert.ToChar(_byte);
-            _c = !char.IsControl(_c) || char.IsWhiteSpace(_c) ? _c : '.';
+            if (Constants.EnableLogging)
+            {
+                var _c = Convert.ToChar(_byte);
+                _c = !char.IsControl(_c) || char.IsWhiteSpace(_c) ? _c : '.';
             
-            Logging.WriteLine($" -- pushing byte: 0x{_byte:x2} ('{_c}')");
+                Console.WriteLine($" -- pushing byte: 0x{_byte:x2} ('{_c}')");
+            }
+            
             buffer[offset + (outputSize++)] = _byte;
         }
         #endregion
@@ -357,9 +367,12 @@ namespace HeatshrinkDotNet
                 var mask = (1 << _windowSz2) - 1;
                 var c = Convert.ToByte(_byte & 0xFF);
 
-                var _c = Convert.ToChar(c);
-                _c = !char.IsControl(_c) || char.IsWhiteSpace(_c) ? _c : '.';
-                Logging.WriteLine($"-- emitting literal byte 0x{c:x2} ('{_c}')");
+                if (Constants.EnableLogging)
+                {
+                    var _c = Convert.ToChar(c);
+                    _c = !char.IsControl(_c) || char.IsWhiteSpace(_c) ? _c : '.';
+                    Console.WriteLine($"-- emitting literal byte 0x{c:x2} ('{_c}')");
+                }
 
                 _buffer[bufPos + (_headIndex++ & mask)] = c;
                 PushByte(buffer, offset, size, ref outputSize, c);
@@ -375,7 +388,8 @@ namespace HeatshrinkDotNet
         {
             var bitCt = _windowSz2;
             var bits = GetBits(bitCt - 8);
-            Logging.WriteLine($"-- backref index (msb), got 0x{bits:x4} (+1)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- backref index (msb), got 0x{bits:x4} (+1)");
 
             if (bits == -1) return DecoderState.BackrefIndexMSB;
             _outputIndex = bits << 8;
@@ -386,7 +400,8 @@ namespace HeatshrinkDotNet
         {
             var bitCt = _windowSz2;
             var bits = GetBits(bitCt < 8 ? bitCt : 8);
-            Logging.WriteLine($"-- backref index (lsb), got 0x{bits:x4} (+1)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- backref index (lsb), got 0x{bits:x4} (+1)");
 
             if (bits == -1) return DecoderState.BackrefIndexLSB;
             _outputIndex |= bits;
@@ -401,7 +416,8 @@ namespace HeatshrinkDotNet
         {
             var brBitCt = _lookaheadSz2;
             var bits = GetBits(brBitCt - 8);
-            Logging.WriteLine($"-- backref count (msb), got 0x{bits:x4} (+1)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- backref count (msb), got 0x{bits:x4} (+1)");
 
             if (bits == -1) return DecoderState.BackrefCountMSB;
             _outputCount = bits << 8;
@@ -412,7 +428,8 @@ namespace HeatshrinkDotNet
         {
             var brBitCt = _lookaheadSz2;
             var bits = GetBits(brBitCt < 8 ? brBitCt : 8);
-            Logging.WriteLine($"-- backref count (lsb), got 0x{bits:x4} (+1)");
+            if (Constants.EnableLogging) 
+                Console.WriteLine($"-- backref count (lsb), got 0x{bits:x4} (+1)");
 
             if (bits == -1) return DecoderState.BackrefCountLSB;
             _outputCount |= bits;
@@ -429,7 +446,8 @@ namespace HeatshrinkDotNet
                 var bufPos = _inputBufferSize;
                 var mask = (1 << _windowSz2) - 1;
                 var negOffset = _outputIndex;
-                Logging.WriteLine($"-- emitting ${count} bytes from -{negOffset} bytes back");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"-- emitting ${count} bytes from -{negOffset} bytes back");
 
                 for (var i = 0; i < count; i++)
                 {
@@ -437,7 +455,7 @@ namespace HeatshrinkDotNet
                     PushByte(buffer, offset, size, ref outputSize, c);
                     _buffer[bufPos + (_headIndex & mask)] = c;
                     _headIndex++;
-                    Logging.WriteLine($"  -- ++ 0x{c:x2}");
+                    if (Constants.EnableLogging) Console.WriteLine($"  -- ++ 0x{c:x2}");
                 }
 
                 _outputCount -= count;

@@ -104,7 +104,8 @@ namespace HeatshrinkDotNet
 
             _searchIndex = new int[size];
 
-            Logging.WriteLine($"-- allocated encoder with buffer size of {size} ({GetInputBufferSize()} byte input size)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- allocated encoder with buffer size of {size} ({GetInputBufferSize()} byte input size)");
         }
 
         /// <summary>
@@ -174,10 +175,11 @@ namespace HeatshrinkDotNet
             inputSize = cpSz;
             _inputSize += cpSz;
 
-            Logging.WriteLine($"-- sunk {cpSz} bytes (of {size}) into encoder at {writeOffset}, input buffer now has {_inputSize}");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- sunk {cpSz} bytes (of {size}) into encoder at {writeOffset}, input buffer now has {_inputSize}");
             if (cpSz == rem)
             {
-                Logging.WriteLine("-- internal buffer is now full");
+                if (Constants.EnableLogging) Console.WriteLine("-- internal buffer is now full");
                 _state = EncoderState.Filled;
             }
             return EncoderSinkResult.Ok;
@@ -218,13 +220,14 @@ namespace HeatshrinkDotNet
             if (buffer == null) return EncoderPollResult.Null;
             if (size == 0)
             {
-                Logging.WriteLine("-- MISUSE: output buffer size is 0");
+                if (Constants.EnableLogging) Console.WriteLine("-- MISUSE: output buffer size is 0");
                 return EncoderPollResult.Misuse;
             }
 
             while (true)
             {
-                Logging.WriteLine($"-- polling, state {Convert.ToInt32(_state)} ({StateNames[_state]}), flags 0x{_flags:x2}");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"-- polling, state {Convert.ToInt32(_state)} ({StateNames[_state]}), flags 0x{_flags:x2}");
 
                 var inState = _state;
                 switch (inState)
@@ -269,7 +272,7 @@ namespace HeatshrinkDotNet
                         return EncoderPollResult.Empty;
 
                     default:
-                        Logging.WriteLine($"-- bad state {StateNames[_state]}");
+                        if (Constants.EnableLogging) Console.WriteLine($"-- bad state {StateNames[_state]}");
                         return EncoderPollResult.Misuse;
                 }
 
@@ -286,7 +289,7 @@ namespace HeatshrinkDotNet
         public EncoderFinishResult Finish()
         {
             _flags |= FlagIsFinishing;
-            Logging.WriteLine("-- setting is_finishing flag");
+            if (Constants.EnableLogging) Console.WriteLine("-- setting is_finishing flag");
             if (_state == EncoderState.NotFull) _state = EncoderState.Filled;
             return _state == EncoderState.Done ? EncoderFinishResult.Done : EncoderFinishResult.More;
         }
@@ -300,7 +303,7 @@ namespace HeatshrinkDotNet
 
         void AddTagBit(byte[] buffer, int offset, int size, ref int outputSize, byte tag)
         {
-            Logging.WriteLine($"-- adding tag bit: {tag}");
+            if (Constants.EnableLogging) Console.WriteLine($"-- adding tag bit: {tag}");
             PushBits(1, tag, buffer, offset, size, ref outputSize);
         }
 
@@ -308,7 +311,7 @@ namespace HeatshrinkDotNet
          * Bytes are set from the lowest bits, up. */
         void PushBits(int count, int bits, byte[] buffer, int offset, int size, ref int outputSize)
         {
-            Logging.WriteLine($"++ push_bits: {count} bits, input of 0x{bits:x2}");
+            if (Constants.EnableLogging) Console.WriteLine($"++ push_bits: {count} bits, input of 0x{bits:x2}");
 
             /* If adding a whole byte and at the start of a new output byte,
              * just push it through whole and skip the bit IO loop. */
@@ -327,7 +330,7 @@ namespace HeatshrinkDotNet
                     if (_bitIndex == 0x00)
                     {
                         _bitIndex = 0x80;
-                        Logging.WriteLine($" > pushing byte 0x{_currentByte:x2}");
+                        if (Constants.EnableLogging) Console.WriteLine($" > pushing byte 0x{_currentByte:x2}");
                         buffer[offset + (outputSize++)] = _currentByte;
                         _currentByte = 0x00;
                     }
@@ -344,7 +347,8 @@ namespace HeatshrinkDotNet
             var _c = Convert.ToChar(c);
             _c = !char.IsControl(_c) || char.IsWhiteSpace(_c) ? _c : '.';
 
-            Logging.WriteLine($"-- yielded literal byte 0x{c:x2} ('{_c}') from +{inputOffset}");
+            if (Constants.EnableLogging) 
+                Console.WriteLine($"-- yielded literal byte 0x{c:x2} ('{_c}') from +{inputOffset}");
             PushBits(8, c, buffer, offset, size, ref outputSize);
         }
 
@@ -366,7 +370,8 @@ namespace HeatshrinkDotNet
 
             if (count > 0)
             {
-                Logging.WriteLine($"-- pushing {count} outgoing bits: 0x{bits:x2}");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"-- pushing {count} outgoing bits: 0x{bits:x2}");
                 PushBits(count, bits, buffer, offset, size, ref outputSize);
                 _outgoingBitsCount -= count;
             }
@@ -409,7 +414,8 @@ namespace HeatshrinkDotNet
 
         int FindLongestMatch(int start, int end, int maxlen, out int matchLength)
         {
-            Logging.WriteLine($"-- scanning for match of buf[{end}:{end + maxlen}] between buf[{start}:{end + maxlen - 1}] (max {maxlen} bytes)");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"-- scanning for match of buf[{end}:{end + maxlen}] between buf[{start}:{end + maxlen - 1}] (max {maxlen} bytes)");
 
             var buf = _buffer;
             var matchMaxLen = 0;
@@ -457,12 +463,13 @@ namespace HeatshrinkDotNet
              * 3, respectively, break_even_point/8 will always be at least 1. */
             if (matchMaxLen > breakEvenPoint / 8)
             {
-                Logging.WriteLine($"-- best match: {matchMaxLen} bytes at -{end - matchIndex}");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"-- best match: {matchMaxLen} bytes at -{end - matchIndex}");
                 matchLength = matchMaxLen;
                 return end - matchIndex;
             }
 
-            Logging.WriteLine("-- none found");
+            if (Constants.EnableLogging) Console.WriteLine("-- none found");
             matchLength = 0;
             return -1;
         }
@@ -474,14 +481,15 @@ namespace HeatshrinkDotNet
             var windowLength = GetInputBufferSize();
             var lookaheadSz = GetLookaheadSize();
             var msi = _matchScanIndex;
-            Logging.WriteLine($"## step_search, scan @ +{msi} ({_inputSize + msi}/{2 * windowLength}), input size {_inputSize}");
+            if (Constants.EnableLogging)
+                Console.WriteLine($"## step_search, scan @ +{msi} ({_inputSize + msi}/{2 * windowLength}), input size {_inputSize}");
 
             bool fin = IsFinishing();
             if (msi > _inputSize - (fin ? 1 : lookaheadSz))
             {
                 /* Current search buffer is exhausted, copy it into the
                  * backlog and await more input. */
-                Logging.WriteLine($"-- end of search @ {msi}");
+                if (Constants.EnableLogging) Console.WriteLine($"-- end of search @ {msi}");
                 return fin ? EncoderState.FlushBits : EncoderState.SaveBacklog;
             }
 
@@ -495,13 +503,13 @@ namespace HeatshrinkDotNet
             var matchPos = FindLongestMatch(start, end, maxPossible, out var matchLength);
             if (matchPos == -1)
             {
-                Logging.WriteLine("ss Match not found");
+                if (Constants.EnableLogging) Console.WriteLine("ss Match not found");
                 _matchScanIndex++;
                 _matchLength = 0;
             }
             else
             {
-                Logging.WriteLine($"ss Found match of {matchLength} bytes at {matchPos}");
+                if (Constants.EnableLogging) Console.WriteLine($"ss Found match of {matchLength} bytes at {matchPos}");
                 _matchPos = matchPos;
                 _matchLength = matchLength;
             }
@@ -549,7 +557,7 @@ namespace HeatshrinkDotNet
         {
             if (CanTakeByte(buffer, offset, size, outputSize))
             {
-                Logging.WriteLine($"-- yielding backref index {_matchPos}");
+                if (Constants.EnableLogging) Console.WriteLine($"-- yielding backref index {_matchPos}");
                 if (PushOutgoingBits(buffer, offset, size, ref outputSize))
                 {
                     return EncoderState.YieldBackrefIndex; // continue
@@ -571,7 +579,7 @@ namespace HeatshrinkDotNet
         {
             if (CanTakeByte(buffer, offset, size, outputSize))
             {
-                Logging.WriteLine($"-- yielding backref length {_matchLength}");
+                if (Constants.EnableLogging) Console.WriteLine($"-- yielding backref length {_matchLength}");
                 if (PushOutgoingBits(buffer, offset, size, ref outputSize))
                 {
                     return EncoderState.YieldBackrefLength;
@@ -594,7 +602,7 @@ namespace HeatshrinkDotNet
             var inputBufSize = GetInputBufferSize();
             var msi = _matchScanIndex;
 
-            Logging.WriteLine("-- saving backlog");
+            if (Constants.EnableLogging) Console.WriteLine("-- saving backlog");
 
             /* Copy processed data to beginning of buffer, so it can be
              * used for future matches. Don't bother checking whether the
@@ -614,18 +622,19 @@ namespace HeatshrinkDotNet
         {
             if (_bitIndex == 0x80)
             {
-                Logging.WriteLine("-- done");
+                if (Constants.EnableLogging) Console.WriteLine("-- done");
                 return EncoderState.Done;
             }
             else if (CanTakeByte(buffer, offset, size, outputSize))
             {
-                Logging.WriteLine($"flushing remaining byte (bit_index == 0x{_bitIndex:x2})");
+                if (Constants.EnableLogging)
+                    Console.WriteLine($"flushing remaining byte (bit_index == 0x{_bitIndex:x2})");
                 buffer[offset + (outputSize++)] = _currentByte;
                 return EncoderState.Done;
             }
             else
             {
-                Logging.WriteLine("-- done");
+                if (Constants.EnableLogging) Console.WriteLine("-- done");
                 return EncoderState.FlushBits;
             }
         }
